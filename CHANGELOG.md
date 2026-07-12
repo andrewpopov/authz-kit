@@ -1,5 +1,83 @@
 # Changelog
 
+## 0.2.0 — 2026-07-12
+
+**BREAKING CHANGE.** `definePolicy` now takes a single options object with
+PER-SCOPE `ladders`, instead of one shared role ladder for every scope. The
+old positional signature `definePolicy(roles, actions, options)` is
+REMOVED — there is no deprecated alias, no back-compat shim. `superRole` is
+now `{ scope, min }` rather than a bare role string.
+
+**Why.** Real consumers have DIFFERENT role vocabularies per scope — mizen's
+`packages/authorization` has fully independent `WorkspaceRole`
+(`OWNER`/`ADMIN`/`MEMBER`/`GUEST`) and `SpaceRole`
+(`MANAGER`/`EDITOR`/`COMMENTER`/`VIEWER`) enums that never compare to each
+other. Under 0.1.0, adopting this kit meant flattening both vocabularies
+onto one shared ladder — awkward, and it let two unrelated role sets sit on
+the same ordering by coincidence. In 0.2.0, `min` is type-constrained to the
+ladder of the ACTION'S OWN scope (`{ scope: 'resource', min: 'OWNER' }` is a
+compile error when the resource ladder has no `OWNER`), and cross-scope
+isolation is now STRUCTURAL: a role normalized against one scope's ladder
+can never satisfy a rule scoped to a different ladder.
+
+Before (0.1.0):
+
+```ts
+const roles = defineRoles(['guest', 'member', 'admin', 'owner'] as const);
+const policy = definePolicy(
+  roles,
+  { 'workspace.delete': { min: 'admin', scope: 'org' } },
+  { superRole: 'admin' },
+);
+```
+
+After (0.2.0), per-scope ladders:
+
+```ts
+const workspace = defineRoles(['GUEST', 'MEMBER', 'ADMIN', 'OWNER'] as const);
+const space = defineRoles(['VIEWER', 'EDITOR', 'MANAGER'] as const);
+const global = defineRoles(['user', 'admin'] as const);
+
+const policy = definePolicy({
+  ladders: { global, org: workspace, resource: space },
+  actions: {
+    'workspace.delete': { scope: 'org', min: 'OWNER' },
+    'space.edit': { scope: 'resource', min: 'EDITOR' },
+  },
+  superRole: { scope: 'global', min: 'admin' }, // OPTIONAL — escalation stays OPT-IN
+});
+```
+
+Simple, single-vocabulary apps (e.g. bewks) are NOT forced to write three
+ladders — a single ladder is still accepted and normalizes internally to
+`{global, org, resource}` all pointing at the same ladder:
+
+```ts
+const policy = definePolicy({ ladders: oneLadder, actions: { /* ... */ } });
+```
+
+Behavior preserved from 0.1.0, re-verified by test and by canary (break the
+guard, confirm the specific test fails by name, restore, reconfirm green):
+fail-closed everywhere (missing scoped role -> `NOT_A_MEMBER`, insufficient
+role -> `INSUFFICIENT_ROLE`, unknown action at runtime -> denied, never
+throws); `superRole` escalation stays strictly OPT-IN (omitted -> no
+escalation at all); an unknown action key at `authorize()` call sites stays
+a compile error. `defineRoles`, `mapScopeRole`, `createAllowlistRoleResolver`,
+and `MEMBERSHIP_SCHEMA_SQL`/`MEMBERSHIP_SCHEMA_SQL_POSTGRES` are UNCHANGED.
+
+- `ActionRule<L>` is now a scope-discriminated union keyed off the ladders
+  actually configured in `L` — an action naming a scope with NO configured
+  ladder is a compile error (not just a wrong-`min` error).
+- `Decision`, `AuthzContext`, and `Scope` are unchanged in shape.
+- New exports: `LadderMap`, `RoleOf<L>`, `SingleLadderPolicyOptions`.
+- `src/__tests__/fixtures.mizen.test.ts` now ports mizen's `WorkspaceRole`
+  and `SpaceRole` as TWO SEPARATE `defineRoles` ladders (previously merged
+  onto one shared ladder) — this is the fixture that motivated the change,
+  and it now asserts the cross-scope isolation directly: an org-only role
+  can never satisfy a resource-scoped rule, and a value that's valid on the
+  org ladder normalizes to the RESOURCE ladder's lowest when read as a
+  resource role.
+
 ## 0.1.0 — 2026-07-12
 
 Initial release. Pure authorization primitives, a behavioral superset of

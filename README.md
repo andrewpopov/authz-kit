@@ -43,32 +43,83 @@ empty ladder, a duplicate role, or an alias whose target isn't in the
 ladder — those are programmer errors caught immediately, not something a
 bad database row should ever trigger.
 
-## `definePolicy` + `authorize`: a typed action policy
+## `definePolicy` + `authorize`: a typed action policy, per-scope ladders
+
+Real consumers have DIFFERENT role vocabularies per scope — mizen's
+`packages/authorization` has fully independent `WorkspaceRole` and
+`SpaceRole` enums that never compare to each other. `definePolicy` takes a
+LADDER PER SCOPE, and each action's `min` is type-constrained to the ladder
+of THAT action's scope:
 
 ```ts
-import { definePolicy, authorize } from '@andrewpopov/authz-kit';
+import { defineRoles, definePolicy, authorize } from '@andrewpopov/authz-kit';
 
-const policy = definePolicy(roles, {
-  'workspace.manage': { min: 'admin', scope: 'org' },
-  'item.view': { min: 'guest', scope: 'resource' }, // scope defaults to 'resource'
+const workspace = defineRoles(['GUEST', 'MEMBER', 'ADMIN', 'OWNER'] as const);
+const space = defineRoles(['VIEWER', 'EDITOR', 'MANAGER'] as const);
+const global = defineRoles(['user', 'admin'] as const);
+
+const policy = definePolicy({
+  ladders: { global, org: workspace, resource: space },
+  actions: {
+    'workspace.delete': { scope: 'org', min: 'OWNER' },
+    'space.edit': { scope: 'resource', min: 'EDITOR' },
+  },
+  superRole: { scope: 'global', min: 'admin' }, // OPTIONAL — escalation stays OPT-IN
 });
 
-authorize(policy, 'item.view', { roles: { resource: 'member' } });
-// { allowed: true, role: 'member', via: 'resource' }
+authorize(policy, 'space.edit', { roles: { resource: 'editor' } });
+// { allowed: true, role: 'EDITOR', via: 'resource' }
 
-authorize(policy, 'item.view', { roles: {} });
+authorize(policy, 'space.edit', { roles: {} });
 // { allowed: false, reason: 'NOT_A_MEMBER' }
 
+// { scope: 'resource', min: 'OWNER' } is a TYPE ERROR — the resource
+// ladder has no 'OWNER'; 'min' is constrained to the ladder of that
+// action's OWN scope.
+//
+// An action naming a scope with no configured ladder (e.g. { scope:
+// 'resource', ... } when `ladders` only has `org`) is also a TYPE ERROR.
+//
 // authorize(policy, 'not.a.real.action', ...) is a TYPE ERROR — the action
 // keys are typed, like defineFlags's registry keys.
 ```
 
-`ActionRule.scope` is `'global' | 'org' | 'resource'`, defaulting to
-`'resource'`. `authorize` evaluates the rule's scope, pulls that scope's
-role out of `context.roles`, and returns a `Decision`:
+`Scope` is `'global' | 'org' | 'resource'`; every `ActionRule` now names its
+own scope explicitly (no default). `authorize` evaluates the rule's scope,
+pulls that scope's role out of `context.roles`, normalizes it against THAT
+SCOPE'S OWN ladder, and returns a `Decision`:
 
 - `{ allowed: true, role, via: scope }`
 - `{ allowed: false, reason: 'NOT_A_MEMBER' | 'INSUFFICIENT_ROLE' }`
+
+### Single-ladder shorthand: keep simple apps simple
+
+Apps with ONE shared role vocabulary (e.g. bewks) don't have to write the
+same ladder out three times — pass a single `RoleLadder` and it's applied to
+`global`, `org`, and `resource` internally:
+
+```ts
+const roles = defineRoles(['guest', 'member', 'admin', 'owner'] as const);
+
+const policy = definePolicy({
+  ladders: roles, // shorthand for { global: roles, org: roles, resource: roles }
+  actions: {
+    'library.manage': { min: 'admin', scope: 'org' },
+    'book.request': { min: 'member', scope: 'resource' },
+  },
+});
+```
+
+### Cross-scope isolation is structural
+
+Because `min` is constrained to (and normalized against) the ladder
+configured for that specific scope, a role that's valid on one ladder can
+NEVER accidentally satisfy a rule scoped to a different ladder — even if the
+two ladders happen to share a role name. An org-only role with no resource
+role present always resolves `NOT_A_MEMBER` on a resource-scoped rule, and a
+value that's a real role on one ladder normalizes to the OTHER ladder's
+LOWEST role when read through it, exactly like any other unrecognized
+string.
 
 ## FAIL-CLOSED semantics (read this before adopting)
 
@@ -91,10 +142,14 @@ role out of `context.roles`, and returns a `Decision`:
   `defineRoles`/`definePolicy` throw, and only at definition time on
   genuine programmer errors.
 
-## Global escalation: `superRole` (opt-in, off by default)
+## Global escalation: `superRole: { scope, min }` (opt-in, off by default)
 
 ```ts
-const policy = definePolicy(roles, { 'item.delete': { min: 'admin' } }, { superRole: 'admin' });
+const policy = definePolicy({
+  ladders: roles,
+  actions: { 'item.delete': { min: 'admin', scope: 'resource' } },
+  superRole: { scope: 'global', min: 'admin' },
+});
 
 authorize(policy, 'item.delete', { roles: { global: 'admin' } });
 // { allowed: true, role: 'admin', via: 'global' } — no resource role needed
@@ -103,10 +158,13 @@ authorize(policy, 'item.delete', { roles: { global: 'admin' } });
 // { allowed: false, reason: 'NOT_A_MEMBER' }
 ```
 
-A `global` role that is `atLeast(superRole)` is allowed **any** action
-regardless of the scoped role in context — this models cairn/sano-os/
-fidash's `isAdmin` bypass. It is **strictly opt-in**: a policy that doesn't
-set `superRole` has no escalation path at all, full stop.
+`superRole` names WHICH scope's ladder grants escalation — a role in
+`context.roles[superRole.scope]` that is `atLeast(superRole.min)` (per that
+scope's OWN ladder) is allowed **any** action regardless of the scoped role
+the rule actually asks for. This models cairn/sano-os/fidash's `isAdmin`
+bypass. It is **strictly opt-in**: a policy that doesn't set `superRole` has
+no escalation path at all, full stop. `superRole.scope` is typically
+`'global'`, but it can name any configured scope.
 
 ## `mapScopeRole`: two-tier scope inheritance
 
@@ -252,13 +310,15 @@ this author's memory notes — same failure shape, different subsystem).
 | Export | Purpose |
 |---|---|
 | `defineRoles(ladder, options?)` | Ordered role ladder; `normalize`/`atLeast`/`rank`, fail-closed to the lowest role. |
-| `definePolicy(roles, actions, options?)` | Typed action policy; an unknown action key elsewhere is a compile error. |
+| `definePolicy({ ladders, actions, superRole? })` | Typed action policy over PER-SCOPE ladders (or one ladder via the single-ladder shorthand); an unknown action key, an unconfigured-scope action, or an out-of-ladder `min` are all compile errors. |
 | `authorize(policy, action, context)` | Pure decision: `{allowed:true, role, via}` or `{allowed:false, reason}`. |
 | `mapScopeRole(parentRole, table, options?)` | Pure parent-role -> child-role lookup for scope inheritance. |
 | `createAllowlistRoleResolver(options)` | Pure, fail-closed env-allowlist admin bootstrap; `resolve`/`isAllowlisted`. |
 | `MEMBERSHIP_SCHEMA_SQL` / `MEMBERSHIP_SCHEMA_SQL_POSTGRES` | Raw-SQL DDL for the canonical `memberships` shape — apps own their migrations. |
 
 `RoleLadder`: `{ roles, lowest, highest, normalize, atLeast, rank }`.
+`LadderMap`: `Partial<{ global: RoleLadder<...>; org: RoleLadder<...>; resource: RoleLadder<...> }>` — which scopes a policy configures, and the ladder each one uses.
+`ActionRule<L>`: `{ scope, min }`, scope-discriminated so `min` is constrained to the ladder configured for that `scope`.
 `Decision`: `{allowed:true; role: string; via: Scope} \| {allowed:false; reason: 'NOT_A_MEMBER' | 'INSUFFICIENT_ROLE'}`.
 `Scope`: `'global' | 'org' | 'resource'`.
 `AllowlistRoleResolver`: `{ resolve(email, currentRole?), isAllowlisted(email) }`.
@@ -266,7 +326,7 @@ this author's memory notes — same failure shape, different subsystem).
 ## Install
 
 ```
-npm install github:andrewpopov/authz-kit#v0.1.0
+npm install github:andrewpopov/authz-kit#v0.2.0
 ```
 
 ## Standards

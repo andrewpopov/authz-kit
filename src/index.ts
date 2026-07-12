@@ -32,6 +32,8 @@ export {
   definePolicy,
   authorize,
   type Scope,
+  type LadderMap,
+  type RoleOf,
   type ActionRule,
   type Policy,
   type AuthzContext,

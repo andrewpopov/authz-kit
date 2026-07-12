@@ -5,55 +5,50 @@ import { definePolicy, authorize } from '../policy';
 /**
  * Behavioral-superset fixture: reproduces mizen's `packages/authorization`
  * (`authorize(action, {workspaceRole, spaceRole})`) on top of
- * `definePolicy`/`authorize`. mizen's `WorkspaceRole` ('OWNER'|'ADMIN'|
- * 'MEMBER'|'GUEST', high to low) maps onto our `org` scope; its
- * `SpaceRole` ('MANAGER'|'EDITOR'|'COMMENTER'|'VIEWER', high to low) maps
- * onto our `resource` scope. Both role vocabularies live on ONE combined
- * ladder here (lowest -> highest) — that's safe because org-scope rules
- * only ever compare an org role against another org role, and
- * resource-scope rules only ever compare a resource role against another
- * resource role; the two groups never cross-compare, so their relative
- * ordering against each other is irrelevant.
+ * `definePolicy`/`authorize`. mizen's `WorkspaceRole` (`@mizen/types`:
+ * `'OWNER'|'ADMIN'|'MEMBER'|'GUEST'`, high to low) and `SpaceRole`
+ * (`'MANAGER'|'EDITOR'|'COMMENTER'|'VIEWER'`, high to low) are genuinely
+ * INDEPENDENT vocabularies in mizen — two separate enums, never compared to
+ * each other. This fixture ports them as TWO SEPARATE `defineRoles`
+ * ladders (`org` for workspace, `resource` for space), not one merged
+ * ladder: cross-scope isolation is now structural, so a workspace role can
+ * never accidentally satisfy a space-scoped rule (and vice versa) even by
+ * ladder-position coincidence.
  *
  * Test cases are ported directly from mizen's `src/index.test.ts`.
  */
 
-const roles = defineRoles([
-  'guest',
-  'member',
-  'admin',
-  'owner', // org group, low -> high
-  'viewer',
-  'commenter',
-  'editor',
-  'manager', // resource group, low -> high
-] as const);
+const workspace = defineRoles(['GUEST', 'MEMBER', 'ADMIN', 'OWNER'] as const);
+const space = defineRoles(['VIEWER', 'COMMENTER', 'EDITOR', 'MANAGER'] as const);
 
-const mizenPolicy = definePolicy(roles, {
-  'workspace.delete': { min: 'owner', scope: 'org' },
-  'workspace.manage': { min: 'admin', scope: 'org' },
-  'workspace.invite': { min: 'admin', scope: 'org' },
-  'integration.install': { min: 'admin', scope: 'org' },
-  'integration.manage': { min: 'admin', scope: 'org' },
-  'audit.view': { min: 'admin', scope: 'org' },
-  'export.create': { min: 'admin', scope: 'org' },
-  'workspace.view': { min: 'guest', scope: 'org' },
-  'integration.use': { min: 'guest', scope: 'org' },
-  'space.view': { min: 'viewer', scope: 'resource' },
-  'item.view': { min: 'viewer', scope: 'resource' },
-  'file.download': { min: 'viewer', scope: 'resource' },
-  'item.comment': { min: 'commenter', scope: 'resource' },
-  'space.manage': { min: 'manager', scope: 'resource' },
-  'item.share': { min: 'manager', scope: 'resource' },
-  'space.create_item': { min: 'editor', scope: 'resource' },
-  'item.edit': { min: 'editor', scope: 'resource' },
-  'item.move': { min: 'editor', scope: 'resource' },
-  'item.archive': { min: 'editor', scope: 'resource' },
-  'file.upload': { min: 'editor', scope: 'resource' },
-  'file.replace': { min: 'editor', scope: 'resource' },
+const mizenPolicy = definePolicy({
+  ladders: { org: workspace, resource: space },
+  actions: {
+    'workspace.delete': { min: 'OWNER', scope: 'org' },
+    'workspace.manage': { min: 'ADMIN', scope: 'org' },
+    'workspace.invite': { min: 'ADMIN', scope: 'org' },
+    'integration.install': { min: 'ADMIN', scope: 'org' },
+    'integration.manage': { min: 'ADMIN', scope: 'org' },
+    'audit.view': { min: 'ADMIN', scope: 'org' },
+    'export.create': { min: 'ADMIN', scope: 'org' },
+    'workspace.view': { min: 'GUEST', scope: 'org' },
+    'integration.use': { min: 'GUEST', scope: 'org' },
+    'space.view': { min: 'VIEWER', scope: 'resource' },
+    'item.view': { min: 'VIEWER', scope: 'resource' },
+    'file.download': { min: 'VIEWER', scope: 'resource' },
+    'item.comment': { min: 'COMMENTER', scope: 'resource' },
+    'space.manage': { min: 'MANAGER', scope: 'resource' },
+    'item.share': { min: 'MANAGER', scope: 'resource' },
+    'space.create_item': { min: 'EDITOR', scope: 'resource' },
+    'item.edit': { min: 'EDITOR', scope: 'resource' },
+    'item.move': { min: 'EDITOR', scope: 'resource' },
+    'item.archive': { min: 'EDITOR', scope: 'resource' },
+    'file.upload': { min: 'EDITOR', scope: 'resource' },
+    'file.replace': { min: 'EDITOR', scope: 'resource' },
+  },
 });
 
-describe('mizen authorization fixture', () => {
+describe('mizen authorization fixture (two independent ladders: workspace + space)', () => {
   it('fails closed when the actor is not a workspace member', () => {
     expect(authorize(mizenPolicy, 'item.view', { roles: {} })).toEqual({
       allowed: false,
@@ -98,5 +93,26 @@ describe('mizen authorization fixture', () => {
     expect(authorize(mizenPolicy, 'item.share', editor).allowed).toBe(false);
     expect(authorize(mizenPolicy, 'space.manage', manager).allowed).toBe(true);
     expect(authorize(mizenPolicy, 'item.share', manager).allowed).toBe(true);
+  });
+
+  // The whole point of the per-scope change: cross-scope isolation is now
+  // structural. A workspace (org) role, however high, must never satisfy a
+  // space (resource) scoped rule when no resource role is present at all.
+  it('cross-scope isolation: a workspace OWNER role never satisfies a resource-scoped rule with no resource role', () => {
+    expect(authorize(mizenPolicy, 'item.edit', { roles: { org: 'OWNER' } })).toEqual({
+      allowed: false,
+      reason: 'NOT_A_MEMBER',
+    });
+  });
+
+  // Normalization happens against the ladder OF THAT SCOPE: 'OWNER' is a
+  // real workspace-ladder role but junk to the space ladder, so read as a
+  // resource role it normalizes to the RESOURCE ladder's lowest ('VIEWER').
+  it('normalization is scope-local: a workspace-valid value is junk to the space ladder', () => {
+    expect(space.normalize('OWNER')).toBe('VIEWER');
+    expect(authorize(mizenPolicy, 'space.manage', { roles: { org: 'MEMBER', resource: 'OWNER' } })).toEqual({
+      allowed: false,
+      reason: 'INSUFFICIENT_ROLE',
+    });
   });
 });

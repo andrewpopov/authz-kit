@@ -26,7 +26,7 @@
  * decides — it never queries a database, a session, or `process.env`.
  */
 export { defineRoles, type RoleLadder, type DefineRolesOptions } from './roles';
-export { definePolicy, authorize, type Scope, type ActionRule, type Policy, type AuthzContext, type Decision, type DefinePolicyOptions, } from './policy';
+export { definePolicy, authorize, type Scope, type LadderMap, type RoleOf, type ActionRule, type Policy, type AuthzContext, type Decision, type DefinePolicyOptions, } from './policy';
 export { mapScopeRole } from './scope';
 export { createAllowlistRoleResolver, type CreateAllowlistRoleResolverOptions, type AllowlistRoleResolver, } from './allowlist';
 export { MEMBERSHIP_SCHEMA_SQL, MEMBERSHIP_SCHEMA_SQL_POSTGRES } from './schema';
