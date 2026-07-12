@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { defineRoles } from '../roles';
+import { definePolicy, authorize } from '../policy';
 
 /**
  * Behavioral-superset fixture: reproduces bewks's `src/lib/auth/roles.ts`
@@ -49,5 +50,41 @@ describe('bewks roleLevel/normalizeRole fixture', () => {
     expect(bewksRoles.atLeast('MEMBER', 'admin')).toBe(false);
     expect(bewksRoles.atLeast('USER', 'admin')).toBe(false);
     expect(bewksRoles.atLeast(null, 'admin')).toBe(false);
+  });
+});
+
+/**
+ * bewks has ONE role vocabulary shared everywhere — the exact case the
+ * single-ladder shorthand exists for. `definePolicy({ ladders: oneLadder,
+ * actions })` must behave identically to spelling out the same ladder for
+ * global/org/resource by hand; simple apps shouldn't have to write three.
+ */
+describe('definePolicy single-ladder shorthand: bewks stays a one-ladder app', () => {
+  const policy = definePolicy({
+    ladders: bewksRoles,
+    actions: {
+      'library.manage': { min: 'admin', scope: 'org' },
+      'book.request': { min: 'member', scope: 'resource' },
+    },
+  });
+
+  it('the shorthand applies the same ladder to every scope', () => {
+    expect(authorize(policy, 'library.manage', { roles: { org: 'ADMIN' } })).toEqual({
+      allowed: true,
+      role: 'admin',
+      via: 'org',
+    });
+    expect(authorize(policy, 'book.request', { roles: { resource: 'USER' } })).toEqual({
+      allowed: true,
+      role: 'member',
+      via: 'resource',
+    });
+  });
+
+  it('still fails closed: a legacy MEMBER-level alias can never satisfy an admin-only rule', () => {
+    expect(authorize(policy, 'library.manage', { roles: { org: 'LIBRARIAN' } })).toEqual({
+      allowed: false,
+      reason: 'INSUFFICIENT_ROLE',
+    });
   });
 });
