@@ -1,0 +1,24 @@
+// COPY-ONCE TEMPLATE — not imported by @andrewpopov/authz-kit, not part of
+// its dist, not a dependency. Paste this model into your own schema.prisma,
+// extend it freely, and own your migrations forever from that point on.
+// Prisma has no schema import mechanism, so there is NO automatic upgrade
+// path: changes to this template ship as CHANGELOG-documented diffs in the
+// authz-kit package that you apply to your copy by hand, if and when you
+// want them.
+//
+// Mirrors src/schema.ts's MEMBERSHIP_SCHEMA_SQL / MEMBERSHIP_SCHEMA_SQL_POSTGRES
+// shape. Deliberately has NO User model — every app's user model differs
+// (TOTP columns, OAuth provider ids, Clerk mirroring, ...); the app owns
+// `users`, this kit only needs to be told a role.
+
+model Membership {
+  scopeType String   @map("scope_type")
+  scopeId   String   @map("scope_id")
+  userId    String   @map("user_id")
+  role      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@id([scopeType, scopeId, userId])
+  @@index([userId])
+  @@map("memberships")
+}

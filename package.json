@@ -1,0 +1,25 @@
+{
+  "name": "@andrewpopov/authz-kit",
+  "version": "0.1.0",
+  "description": "Pure authorization primitives: ordered role ladders with fail-closed normalization, a typed action policy with an authorize() decision, and two-tier scope-role inheritance. ORM- and framework-agnostic; apps fetch roles, the kit decides.",
+  "author": "Andrew Popov",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "files": ["dist", "templates"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "verify:pack": "node scripts/verify-pack.mjs"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.1.0"
+  }
+}
