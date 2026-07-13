@@ -95,7 +95,14 @@ export function createAllowlistRoleResolver<T extends readonly string[]>(
     }
 
     if (isAllowlisted(email)) {
-      return adminRole;
+      // Never LOWER a role. A user who already holds something ABOVE adminRole
+      // (e.g. 'owner') and whose email is also on the allowlist keeps what they
+      // have. Returning adminRole unconditionally would DEMOTE them on every
+      // login — savoro hand-rolled a guard against exactly that, and a resolver
+      // that reintroduces it is not a superset of the code it replaces.
+      return ladder.rank(normalizedCurrent) > ladder.rank(adminRole)
+        ? normalizedCurrent
+        : adminRole;
     }
 
     // Demotion safety: don't let a re-run of the resolver demote a
