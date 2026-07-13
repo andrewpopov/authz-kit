@@ -27,9 +27,12 @@
  * decides — it never queries a database, a session, or `process.env`.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MEMBERSHIP_SCHEMA_SQL_POSTGRES = exports.MEMBERSHIP_SCHEMA_SQL = exports.createAllowlistRoleResolver = exports.mapScopeRole = exports.authorize = exports.definePolicy = exports.defineRoles = void 0;
+exports.MEMBERSHIP_SCHEMA_SQL_POSTGRES = exports.MEMBERSHIP_SCHEMA_SQL = exports.createAllowlistRoleResolver = exports.mapScopeRole = exports.authorize = exports.definePolicy = exports.evaluateAccountAdminMutation = exports.defineAccountAdminPolicy = exports.defineRoles = void 0;
 var roles_1 = require("./roles");
 Object.defineProperty(exports, "defineRoles", { enumerable: true, get: function () { return roles_1.defineRoles; } });
+var accountAdmin_1 = require("./accountAdmin");
+Object.defineProperty(exports, "defineAccountAdminPolicy", { enumerable: true, get: function () { return accountAdmin_1.defineAccountAdminPolicy; } });
+Object.defineProperty(exports, "evaluateAccountAdminMutation", { enumerable: true, get: function () { return accountAdmin_1.evaluateAccountAdminMutation; } });
 var policy_1 = require("./policy");
 Object.defineProperty(exports, "definePolicy", { enumerable: true, get: function () { return policy_1.definePolicy; } });
 Object.defineProperty(exports, "authorize", { enumerable: true, get: function () { return policy_1.authorize; } });

@@ -1,12 +1,25 @@
 # Changelog
 
-## 0.2.3
+## 0.3.0
 
 - Add public contribution, support, and private vulnerability-reporting policies.
 - Add a public security model distinguishing fail-closed policy guarantees from
   consumer responsibilities for identity, membership freshness, and enforcement.
 - Add `npm run verify` for the local release gate.
 - Upgrade the Vitest development toolchain to a version with no known advisories.
+
+Add the pure account-admin mutation policy extracted from the behavior shared
+by Savoro, Smarthome, Sano OS, Cairn, and Bewks. It evaluates authoritative
+actor/target facts for role, status, and deletion mutations; fails closed for
+unknown roles/statuses; protects self-mutations and the last active protected
+account; returns explicit no-op outcomes; and specifies whether an effective
+change must invalidate credentials. Applications still own transactions,
+repositories, session/token storage, audit records, mail, and domain-specific
+deletion behavior.
+
+`RoleLadder` now exposes `isKnown(raw)` so account-management code can reject
+an unknown stored role rather than normalizing it to the lowest role and
+accidentally treating it as safe to administer.
 
 ## 0.2.2
 

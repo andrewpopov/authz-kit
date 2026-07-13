@@ -29,6 +29,18 @@
 export { defineRoles, type RoleLadder, type DefineRolesOptions } from './roles';
 
 export {
+  defineAccountAdminPolicy,
+  evaluateAccountAdminMutation,
+  type AccountAdminDecision,
+  type AccountAdminDenyReason,
+  type AccountAdminMutation,
+  type AccountAdminMutationContext,
+  type AccountAdminPolicy,
+  type AccountAdminTarget,
+  type DefineAccountAdminPolicyOptions,
+} from './accountAdmin';
+
+export {
   definePolicy,
   authorize,
   type Scope,
