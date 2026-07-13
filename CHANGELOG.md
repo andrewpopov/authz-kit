@@ -5,6 +5,7 @@
 - Add a public security model distinguishing fail-closed policy guarantees from
   consumer responsibilities for identity, membership freshness, and enforcement.
 - Add `npm run verify` for the local release gate.
+- Upgrade the Vitest development toolchain to a version with no known advisories.
 
 ## 0.2.2
 
