@@ -27,6 +27,17 @@ describe('defineRoles: normalize', () => {
   });
 });
 
+describe('defineRoles: isKnown', () => {
+  const roles = defineRoles(['guest', 'member', 'admin'] as const, { aliases: { USER: 'member' } });
+
+  it('distinguishes a declared role or alias from an unknown value that normalizes to the lowest role', () => {
+    expect(roles.isKnown('guest')).toBe(true);
+    expect(roles.isKnown(' USER ')).toBe(true);
+    expect(roles.isKnown('wizard')).toBe(false);
+    expect(roles.isKnown(null)).toBe(false);
+  });
+});
+
 describe('defineRoles: aliases', () => {
   const roles = defineRoles(['guest', 'member', 'admin', 'owner'] as const, {
     aliases: { USER: 'member', moderator: 'member' },

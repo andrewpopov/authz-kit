@@ -19,6 +19,8 @@ export interface RoleLadder<T extends readonly string[]> {
     normalize(raw: unknown): T[number];
     /** `normalize(role)` then compare ladder position: is it >= `min`? */
     atLeast(role: unknown, min: T[number]): boolean;
+    /** True only when a raw value maps to a declared role or declared alias. */
+    isKnown(raw: unknown): boolean;
     /** Ladder position of an ALREADY-NORMALIZED role (0 = lowest). */
     rank(role: T[number]): number;
 }

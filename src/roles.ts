@@ -19,6 +19,8 @@ export interface RoleLadder<T extends readonly string[]> {
   normalize(raw: unknown): T[number];
   /** `normalize(role)` then compare ladder position: is it >= `min`? */
   atLeast(role: unknown, min: T[number]): boolean;
+  /** True only when a raw value maps to a declared role or declared alias. */
+  isKnown(raw: unknown): boolean;
   /** Ladder position of an ALREADY-NORMALIZED role (0 = lowest). */
   rank(role: T[number]): number;
 }
@@ -82,6 +84,13 @@ export function defineRoles<const T extends readonly string[]>(
     return lowest;
   }
 
+  function isKnown(raw: unknown): boolean {
+    if (typeof raw !== 'string') return false;
+    const key = raw.trim().toLowerCase();
+    if (key === '') return false;
+    return aliasMap.has(key) || ladder.some((role) => role.toLowerCase() === key);
+  }
+
   function rank(role: T[number]): number {
     return rankByRole.get(role) ?? 0;
   }
@@ -90,5 +99,5 @@ export function defineRoles<const T extends readonly string[]>(
     return rank(normalize(role)) >= rank(min);
   }
 
-  return { roles: ladder, lowest, highest, normalize, atLeast, rank };
+  return { roles: ladder, lowest, highest, normalize, isKnown, atLeast, rank };
 }

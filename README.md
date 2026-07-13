@@ -235,6 +235,80 @@ env string (split on comma/semicolon/whitespace, empty entries ignored)
 or a pre-split array; the kit never reads `process.env` itself — you
 inject the value.
 
+## Account-admin mutation policy
+
+User-management services across the fleet share a security-critical policy
+layer even though their database schemas, role names, session tables, and
+deletion semantics differ. `defineAccountAdminPolicy` and
+`evaluateAccountAdminMutation` extract only that pure layer.
+
+The package does **not** fetch users, start transactions, update rows, revoke
+tokens, send invitations, write audit records, or delete domain content. An
+app loads authoritative facts, asks the policy for a decision, then performs
+the approved work in its own transaction. A policy result's
+`effects.invalidateCredentials` tells the app when an effective role change,
+active-to-inactive transition, or deletion must invalidate its access and
+refresh credentials; the app supplies the actual invalidation implementation.
+
+```ts
+import {
+  defineRoles,
+  defineAccountAdminPolicy,
+  evaluateAccountAdminMutation,
+} from '@andrewpopov/authz-kit';
+
+const roles = defineRoles(['user', 'admin', 'owner'] as const);
+const accountAdmin = defineAccountAdminPolicy({
+  roles,
+  statuses: ['active', 'deactivated'] as const,
+  activeStatuses: ['active'] as const,
+  isProtectedRole: (role) => role === 'owner',
+  canManageTarget: ({ actorRole, targetRole }) => actorRole === 'owner' || targetRole === 'user',
+  canAssignRole: ({ actorRole, nextRole }) => actorRole === 'owner' || nextRole === 'user',
+});
+
+// Load these facts inside the app's transaction. The count excludes the
+// target and must be authoritative when removing an active protected account.
+const decision = evaluateAccountAdminMutation(accountAdmin, {
+  actorId: actor.id,
+  actorRole: actor.role,
+  target: { id: target.id, role: target.role, status: target.status },
+  mutation: { kind: 'set-status', status: 'deactivated' },
+  activeProtectedPeerCount: otherActiveOwners,
+});
+
+if (!decision.allowed) throw new Error(decision.reason);
+if (decision.outcome === 'no-op') return;
+
+await transaction(async (tx) => {
+  // Re-read/re-evaluate in tx if any supplied fact can race.
+  await disableUser(tx, target.id);
+  if (decision.effects.invalidateCredentials) await revokeCredentials(tx, target.id);
+  await writeAudit(tx, actor.id, target.id);
+});
+```
+
+The policy fails closed for an unknown actor role, target role, target status,
+or proposed role/status. Unlike ordinary authorization normalization, an
+unknown stored role cannot be treated as the lowest role and accidentally
+made safe to modify: `RoleLadder.isKnown(raw)` distinguishes a real declared
+role or alias from a value that merely normalizes to the lowest role.
+
+Built-in protections are configurable but default to enabled:
+
+- self role reduction, self deactivation, and self deletion deny;
+- application-provided target and role-assignment authority must allow;
+- removing an active protected account requires an explicit count of other
+  active protected accounts and denies at zero;
+- an unchanged role/status is an allowed `no-op` with no credential effect.
+
+The source fixtures cover Savoro's active-owner invariant, Smarthome's
+role-change invalidation/no-op behavior, Sano OS and Cairn self-protection,
+and Bewks's privileged-target guard. Keep Savoro's pantry purge plan,
+Bewks's invite/email behavior, Sano OS's Google grant revocation, and each
+application's transaction and audit implementation local — those are domain
+policies, not a common account protocol.
+
 ## The canonical `memberships` shape, and "apps own their migrations"
 
 `src/schema.ts` exports raw-SQL DDL constants — `MEMBERSHIP_SCHEMA_SQL`
