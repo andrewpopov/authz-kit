@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.3
+
+- Add a public security model distinguishing fail-closed policy guarantees from
+  consumer responsibilities for identity, membership freshness, and enforcement.
+- Add `npm run verify` for the local release gate.
+
 ## 0.2.2
 
 Fix — **createAllowlistRoleResolver demoted an allowlisted user who already held a

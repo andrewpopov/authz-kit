@@ -326,9 +326,19 @@ this author's memory notes — same failure shape, different subsystem).
 ## Install
 
 ```
-npm install github:andrewpopov/authz-kit#v0.2.0
+npm install github:andrewpopov/authz-kit#v0.2.2
 ```
 
 ## Standards
+
+Read the [security model](./SECURITY.md) before using a role ladder in a
+security-sensitive route or migration.
+
+## Verify locally
+
+```bash
+npm ci
+npm run verify
+```
 
 See [`STANDARDS.md`](./STANDARDS.md) (synced from `agent_brain/knowledge/shared-package-standards.md`).
