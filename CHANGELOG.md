@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.1
+
+Fix — expose `./package.json` in the `exports` map. Without it,
+`require('@andrewpopov/authz-kit/package.json')` threw
+`ERR_PACKAGE_PATH_NOT_EXPORTED` — which broke the standards' own documented way of
+verifying an INSTALLED version, the guard against the `github:` re-resolve trap.
+
+No runtime change.
+
 ## 0.2.0 — 2026-07-12
 
 **BREAKING CHANGE.** `definePolicy` now takes a single options object with
