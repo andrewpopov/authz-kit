@@ -121,3 +121,34 @@ describe('createAllowlistRoleResolver: demotion safety', () => {
     expect(resolver.resolve('nobody@example.com')).toBe('member');
   });
 });
+
+// The allowlisted branch is the one that bites. Before this was fixed, `resolve`
+// returned `adminRole` unconditionally for an allowlisted email — so a user who
+// already held a role ABOVE adminRole (an `owner`) was silently DEMOTED to admin
+// on every login. savoro hand-rolled a guard against exactly that defect; a
+// resolver that reintroduces it is not a superset of the code it would replace.
+describe('createAllowlistRoleResolver: an allowlisted user is never DEMOTED', () => {
+  const resolver = createAllowlistRoleResolver({
+    ladder,
+    adminEmails: 'boss@example.com',
+    adminRole: 'admin',
+    defaultRole: 'member',
+  });
+
+  it('an allowlisted OWNER keeps owner — it is NOT lowered to adminRole', () => {
+    expect(resolver.resolve('boss@example.com', 'owner')).toBe('owner');
+  });
+
+  it('an allowlisted user below adminRole is still elevated to adminRole', () => {
+    expect(resolver.resolve('boss@example.com', 'member')).toBe('admin');
+    expect(resolver.resolve('boss@example.com', 'guest')).toBe('admin');
+  });
+
+  it('an allowlisted user already AT adminRole stays there', () => {
+    expect(resolver.resolve('boss@example.com', 'admin')).toBe('admin');
+  });
+
+  it('an allowlisted brand-new user (no stored role) gets adminRole', () => {
+    expect(resolver.resolve('boss@example.com')).toBe('admin');
+  });
+});

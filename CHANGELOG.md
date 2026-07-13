@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.2
+
+Fix — **createAllowlistRoleResolver demoted an allowlisted user who already held a
+role ABOVE adminRole**. `resolve` returned `adminRole` unconditionally for an
+allowlisted email, so an `owner` whose address was also in the allowlist was
+silently lowered to `admin` on every login. It now returns the HIGHER of
+`adminRole` and the current role — it never lowers a role.
+
+This is the exact defect savoro hand-rolled a guard against. The resolver was
+therefore NOT a superset of the code it was meant to replace, and adopting it
+would have reintroduced a bug we had just fixed. The allowlisted branch had no
+test coverage at all; it does now.
+
 ## 0.2.1
 
 Fix — expose `./package.json` in the `exports` map. Without it,
