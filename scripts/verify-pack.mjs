@@ -21,7 +21,7 @@ import { join } from 'node:path';
 const pkgRoot = new URL('..', import.meta.url).pathname;
 const pkg = JSON.parse(readFileSync(join(pkgRoot, 'package.json'), 'utf8'));
 
-const EXPECTED_FUNCTIONS = ['defineRoles', 'definePolicy', 'authorize', 'mapScopeRole', 'createAllowlistRoleResolver'];
+const EXPECTED_FUNCTIONS = ['defineRoles', 'definePolicy', 'authorize', 'mapScopeRole', 'createAllowlistRoleResolver', 'defineAccountAdminPolicy', 'evaluateAccountAdminMutation'];
 
 const EXPECTED_VALUES = ['MEMBERSHIP_SCHEMA_SQL', 'MEMBERSHIP_SCHEMA_SQL_POSTGRES'];
 

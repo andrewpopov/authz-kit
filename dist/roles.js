@@ -45,11 +45,19 @@ function defineRoles(ladder, options = {}) {
         }
         return lowest;
     }
+    function isKnown(raw) {
+        if (typeof raw !== 'string')
+            return false;
+        const key = raw.trim().toLowerCase();
+        if (key === '')
+            return false;
+        return aliasMap.has(key) || ladder.some((role) => role.toLowerCase() === key);
+    }
     function rank(role) {
         return rankByRole.get(role) ?? 0;
     }
     function atLeast(role, min) {
         return rank(normalize(role)) >= rank(min);
     }
-    return { roles: ladder, lowest, highest, normalize, atLeast, rank };
+    return { roles: ladder, lowest, highest, normalize, isKnown, atLeast, rank };
 }
