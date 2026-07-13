@@ -4,6 +4,9 @@
   "description": "Pure authorization primitives: ordered role ladders with fail-closed normalization, a typed action policy with an authorize() decision, and two-tier scope-role inheritance. ORM- and framework-agnostic; apps fetch roles, the kit decides.",
   "author": "Andrew Popov",
   "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/andrewpopov/authz-kit.git" },
+  "bugs": { "url": "https://github.com/andrewpopov/authz-kit/issues" },
+  "homepage": "https://github.com/andrewpopov/authz-kit#readme",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {

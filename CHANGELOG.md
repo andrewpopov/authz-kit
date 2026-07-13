@@ -2,6 +2,7 @@
 
 ## 0.2.3
 
+- Add public contribution, support, and private vulnerability-reporting policies.
 - Add a public security model distinguishing fail-closed policy guarantees from
   consumer responsibilities for identity, membership freshness, and enforcement.
 - Add `npm run verify` for the local release gate.
