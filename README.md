@@ -400,7 +400,7 @@ this author's memory notes — same failure shape, different subsystem).
 ## Install
 
 ```
-npm install github:andrewpopov/authz-kit#v0.2.2
+npm install github:andrewpopov/authz-kit#v0.3.0
 ```
 
 ## Standards
