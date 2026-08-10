@@ -147,3 +147,94 @@ describe('authorize: per-scope ladders and cross-scope isolation', () => {
     expect(decision).toEqual({ allowed: true, role: 'admin', via: 'global' });
   });
 });
+
+describe('definePolicy: definition-time validation (fail-closed)', () => {
+  it('throws when an action names a scope with no configured ladder', () => {
+    expect(() =>
+      definePolicy({
+        ladders: { org: roles },
+        actions: {
+          'resource.view': { min: 'guest', scope: 'resource' } as never,
+        },
+      }),
+    ).toThrow(/no configured ladder/i);
+  });
+
+  it("throws when an action's min is not a member of its scope's ladder", () => {
+    // 'wizard' is not on this ladder at all — a real config typo, exactly
+    // the shape that used to slip through, land as `rank() === 0` at
+    // authorize-time, and authorize EVERY actual role for that action.
+    expect(() =>
+      definePolicy({
+        ladders: roles,
+        actions: {
+          'org.manage': { min: 'wizard', scope: 'org' } as never,
+        },
+      }),
+    ).toThrow(/not a member/i);
+  });
+
+  it('throws on a superRole naming an unknown role', () => {
+    expect(() =>
+      definePolicy({
+        ladders: roles,
+        actions: {
+          'org.manage': { min: 'admin', scope: 'org' },
+        },
+        superRole: { min: 'wizard', scope: 'global' } as never,
+      }),
+    ).toThrow(/not a member/i);
+  });
+
+  it('constructs without throwing for a valid single-ladder policy', () => {
+    expect(() =>
+      definePolicy({
+        ladders: roles,
+        actions: {
+          'org.manage': { min: 'admin', scope: 'org' },
+          'resource.view': { min: 'guest', scope: 'resource' },
+        },
+        superRole: { min: 'owner', scope: 'org' },
+      }),
+    ).not.toThrow();
+  });
+
+  it('constructs without throwing for a valid per-scope-ladders policy', () => {
+    const orgLadder = defineRoles(['GUEST', 'MEMBER', 'ADMIN', 'OWNER'] as const);
+    const resourceLadder = defineRoles(['VIEWER', 'EDITOR', 'MANAGER'] as const);
+    expect(() =>
+      definePolicy({
+        ladders: { org: orgLadder, resource: resourceLadder },
+        actions: {
+          'workspace.delete': { scope: 'org', min: 'OWNER' },
+          'space.edit': { scope: 'resource', min: 'EDITOR' },
+        },
+      }),
+    ).not.toThrow();
+  });
+});
+
+describe('authorize: own-property-only action lookup (prototype-pollution guard)', () => {
+  it('an action reachable only via the prototype chain (not an own property) is never authorizable', () => {
+    // `Object.entries` (what `definePolicy` validates with) sees ONLY own
+    // enumerable properties, so this malformed `min: 'wizard'` rule is
+    // never checked at definition time — `definePolicy` must not throw.
+    // The vulnerability this guards is that ordinary property access
+    // (`actions[action]`) WOULD still resolve 'dangerous' through the
+    // prototype chain, reaching an unvalidated rule whose `min` ranks 0 —
+    // authorizing the lowest role on the ladder. `authorize`'s lookup must
+    // agree with `definePolicy`'s validation model (own-property-only) so
+    // an inherited rule is exactly as unreachable as an unvalidated one.
+    const maliciousActions = Object.create({
+      dangerous: { scope: 'org', min: 'wizard' },
+    }) as Record<string, never>;
+
+    // No try/catch: if `definePolicy` threw here, the test would fail on
+    // this line with the raw exception rather than reaching the assertion
+    // below — that failure mode is itself proof it wasn't silently caught.
+    const policy = definePolicy({ ladders: roles, actions: maliciousActions });
+
+    const decision = authorize(policy, 'dangerous' as never, { roles: { org: 'guest' } });
+    expect(decision).toEqual({ allowed: false, reason: 'INSUFFICIENT_ROLE' });
+  });
+});

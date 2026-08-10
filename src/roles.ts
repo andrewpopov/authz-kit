@@ -49,15 +49,24 @@ export function defineRoles<const T extends readonly string[]>(
     throw new Error('defineRoles: ladder must not be empty');
   }
 
-  const seen = new Set<string>();
-  for (const role of ladder) {
-    if (seen.has(role)) {
-      throw new Error(`defineRoles: duplicate role "${role}"`);
-    }
-    seen.add(role);
-  }
+  // ONE normalized namespace for roles AND aliases: `normalize`/`isKnown`
+  // both match case-insensitively, so a case-sensitive duplicate check on
+  // roles alone (or a target-only check on aliases) can miss a collision
+  // that's very real at lookup time — a second role differing only in case,
+  // or an alias key that shadows a declared role's own name. Build the
+  // namespace in one pass and reject any case-insensitive collision, so the
+  // set of keys `normalize` can ever match is provably one-to-one.
+  const rankByRole = new Map<string, number>();
+  const namespace = new Map<string, { kind: 'role'; role: T[number] } | { kind: 'alias'; target: T[number] }>();
 
-  const rankByRole = new Map<string, number>(ladder.map((role, i) => [role, i] as const));
+  ladder.forEach((role, i) => {
+    const key = role.trim().toLowerCase();
+    if (namespace.has(key)) {
+      throw new Error(`defineRoles: duplicate role "${role}" (case-insensitive collision with an existing role)`);
+    }
+    rankByRole.set(role, i);
+    namespace.set(key, { kind: 'role', role });
+  });
 
   // Normalize alias keys (trim + lowercase) at definition time so lookup is
   // a single case-normalized map access, and validate every alias target is
@@ -67,7 +76,26 @@ export function defineRoles<const T extends readonly string[]>(
     if (!rankByRole.has(target)) {
       throw new Error(`defineRoles: alias "${rawKey}" targets unknown role "${target}"`);
     }
-    aliasMap.set(rawKey.trim().toLowerCase(), target);
+    const key = rawKey.trim().toLowerCase();
+    const existing = namespace.get(key);
+    if (existing !== undefined) {
+      // Same-target-is-fine, applied consistently to BOTH collision shapes:
+      // an alias key that resolves to the exact role/alias already sitting
+      // in that slot is redundant, not a conflict — only a DIFFERENT target
+      // is the actual hazard (the shadowing/escalation case).
+      const existingTarget = existing.kind === 'role' ? existing.role : existing.target;
+      if (existingTarget !== target) {
+        if (existing.kind === 'role') {
+          throw new Error(`defineRoles: alias "${rawKey}" collides with declared role "${existing.role}"`);
+        }
+        throw new Error(
+          `defineRoles: alias "${rawKey}" collides with a conflicting alias (already maps to "${existing.target}", cannot also map to "${target}")`,
+        );
+      }
+      continue; // redundant — same normalized key, resolves to the same role either way; not a conflict.
+    }
+    namespace.set(key, { kind: 'alias', target });
+    aliasMap.set(key, target);
   }
 
   const lowest = ladder[0];
