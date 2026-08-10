@@ -86,6 +86,50 @@ describe('defineRoles: definition-time throws', () => {
       }),
     ).toThrow(/unknown role/i);
   });
+
+  it('throws on a case-insensitive duplicate role', () => {
+    expect(() => defineRoles(['guest', 'member', 'Guest', 'owner'] as const)).toThrow(/duplicate/i);
+  });
+
+  it('throws on an alias key colliding with a declared role name', () => {
+    // If this were allowed, `normalize('guest')` would return 'admin'
+    // (aliasMap is checked before the ladder scan) — silently shadowing the
+    // declared lowest role with a privilege-escalating alias.
+    expect(() =>
+      defineRoles(['guest', 'member', 'admin', 'owner'] as const, {
+        aliases: { guest: 'admin' },
+      }),
+    ).toThrow(/collides with declared role/i);
+  });
+
+  it('throws on an alias key colliding with a conflicting alias (case-insensitive, different target)', () => {
+    expect(() =>
+      defineRoles(['guest', 'member', 'admin', 'owner'] as const, {
+        aliases: { USER: 'member', user: 'admin' },
+      }),
+    ).toThrow(/conflicting alias/i);
+  });
+
+  it('does NOT throw on a redundant, identical alias entry (same normalized key, same target)', () => {
+    // 'USER' and 'user' both normalize to the same key and agree on the
+    // target — redundant, but not a conflict.
+    expect(() =>
+      defineRoles(['guest', 'member', 'admin', 'owner'] as const, {
+        aliases: { USER: 'member', user: 'member' },
+      }),
+    ).not.toThrow();
+  });
+
+  it('does NOT throw on an alias key colliding with a declared role WHEN it resolves to that same role', () => {
+    // { GUEST: 'guest' } is redundant (an alias of a role onto itself) but
+    // harmless — it can never shadow or escalate anything, unlike { guest:
+    // 'admin' } above. Same-target-is-fine applies here exactly as it does
+    // for alias-vs-alias collisions.
+    const roles = defineRoles(['guest', 'member', 'admin', 'owner'] as const, {
+      aliases: { GUEST: 'guest' },
+    });
+    expect(roles.normalize('GUEST')).toBe('guest');
+  });
 });
 
 describe('defineRoles: rank / roles / lowest / highest', () => {

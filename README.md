@@ -39,9 +39,16 @@ normalization happens at DEFINITION time on the alias keys, so `{ USER:
 'member' }` and `{ user: 'member' }` behave identically.
 
 `defineRoles` throws at DEFINITION time (not on a runtime value) for an
-empty ladder, a duplicate role, or an alias whose target isn't in the
-ladder — those are programmer errors caught immediately, not something a
-bad database row should ever trigger.
+empty ladder, a case-insensitive duplicate role, an alias whose target
+isn't in the ladder, or an alias key that collides with a declared role
+name or a conflicting alias AND resolves to a DIFFERENT role than the one
+already at that slot — roles and aliases share ONE normalized,
+case-insensitive namespace, so none of these can silently shadow another
+entry at `normalize()` time. A collision that resolves to the SAME role
+(e.g. `{ GUEST: 'guest' }` alongside a declared `guest` role, or two
+aliases that agree on one target) is redundant but harmless, so it does
+NOT throw. Those are all programmer errors caught immediately, not
+something a bad database row should ever trigger.
 
 ## `definePolicy` + `authorize`: a typed action policy, per-scope ladders
 
@@ -85,8 +92,22 @@ authorize(policy, 'space.edit', { roles: {} });
 ```
 
 `Scope` is `'global' | 'org' | 'resource'`; every `ActionRule` now names its
-own scope explicitly (no default). `authorize` evaluates the rule's scope,
-pulls that scope's role out of `context.roles`, normalizes it against THAT
+own scope explicitly (no default). Because `min` is plain `string` data at
+runtime, `definePolicy` also validates it at DEFINITION time, not just at
+the type level: an action naming a scope with no configured ladder, or a
+`min` that isn't an actual member of that scope's ladder, throws
+immediately. This matters because a config- or type-system-bypassed `min`
+that isn't a real ladder entry would otherwise rank as `0` at
+`authorize()` time — the LOWEST possible rank — which makes `atLeast()`
+true for every real role on that ladder, a fail-open. `superRole` (if
+given) is validated the same way. That definition-time validation only
+sees `actions`' OWN properties (it walks them with `Object.entries`), so
+`authorize()`'s action lookup is deliberately OWN-property-only too — an
+action reachable only through an inherited/prototype-polluted `actions`
+object is never authorizable, keeping validation and lookup in agreement
+regardless of how `policy.actions` was built. `authorize` evaluates the
+rule's scope, pulls that scope's role out of `context.roles`, normalizes
+it against THAT
 SCOPE'S OWN ladder, and returns a `Decision`:
 
 - `{ allowed: true, role, via: scope }`
@@ -289,10 +310,17 @@ await transaction(async (tx) => {
 ```
 
 The policy fails closed for an unknown actor role, target role, target status,
-or proposed role/status. Unlike ordinary authorization normalization, an
-unknown stored role cannot be treated as the lowest role and accidentally
-made safe to modify: `RoleLadder.isKnown(raw)` distinguishes a real declared
-role or alias from a value that merely normalizes to the lowest role.
+proposed role/status, or mutation kind. `mutation` is validated by SHAPE
+before its VALUE is ever trusted, then EXHAUSTIVELY on that value: a `null`,
+`undefined`, or non-object `mutation`, a `kind` that isn't an OWN string
+property (so a `kind` inherited from a crafted/polluted prototype is never
+trusted), or a recognized-shape-but-unknown `kind` value (a host bug, a stale
+client, a mutation shape from a future schema version) — all of these deny
+with `UNKNOWN_MUTATION_KIND`, and `evaluateAccountAdminMutation` never throws
+on any of them. Unlike ordinary authorization normalization, an unknown
+stored role cannot be treated as the lowest role and accidentally made safe
+to modify: `RoleLadder.isKnown(raw)` distinguishes a real declared role or
+alias from a value that merely normalizes to the lowest role.
 
 Built-in protections are configurable but default to enabled:
 
@@ -384,7 +412,7 @@ this author's memory notes — same failure shape, different subsystem).
 | Export | Purpose |
 |---|---|
 | `defineRoles(ladder, options?)` | Ordered role ladder; `normalize`/`atLeast`/`rank`, fail-closed to the lowest role. |
-| `definePolicy({ ladders, actions, superRole? })` | Typed action policy over PER-SCOPE ladders (or one ladder via the single-ladder shorthand); an unknown action key, an unconfigured-scope action, or an out-of-ladder `min` are all compile errors. |
+| `definePolicy({ ladders, actions, superRole? })` | Typed action policy over PER-SCOPE ladders (or one ladder via the single-ladder shorthand); an unknown action key, an unconfigured-scope action, or an out-of-ladder `min` are all compile errors, and also throw at DEFINITION time as a runtime backstop (a scope with no ladder, or a `min`/`superRole` not actually a member of its ladder). |
 | `authorize(policy, action, context)` | Pure decision: `{allowed:true, role, via}` or `{allowed:false, reason}`. |
 | `mapScopeRole(parentRole, table, options?)` | Pure parent-role -> child-role lookup for scope inheritance. |
 | `createAllowlistRoleResolver(options)` | Pure, fail-closed env-allowlist admin bootstrap; `resolve`/`isAllowlisted`. |

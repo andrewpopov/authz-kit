@@ -52,6 +52,7 @@ export type AccountAdminDenyReason =
   | 'UNKNOWN_ACTOR_ROLE'
   | 'UNKNOWN_TARGET_ROLE'
   | 'UNKNOWN_TARGET_STATUS'
+  | 'UNKNOWN_MUTATION_KIND'
   | 'UNKNOWN_PROPOSED_ROLE'
   | 'UNKNOWN_PROPOSED_STATUS'
   | 'SELF_ROLE_REDUCTION'
@@ -117,6 +118,26 @@ function denied(reason: AccountAdminDenyReason): AccountAdminDecision<never, nev
 }
 
 /**
+ * True only when `mutation` is a non-null object with `kind` as an OWN
+ * string property. Guards two ways a host-supplied `mutation` value could
+ * otherwise defeat the exhaustive `switch` below: a `null`/`undefined`/
+ * non-object value would THROW a TypeError on `.kind` access instead of
+ * producing a decision (this package must never throw), and a `kind`
+ * inherited from a crafted/polluted prototype — e.g.
+ * `Object.create({ kind: 'delete' })`, which has no OWN `kind` at all —
+ * would otherwise read as a legitimate discriminator via the prototype
+ * chain and reach that kind's branch.
+ */
+function hasOwnMutationKind(mutation: unknown): mutation is { kind: string } {
+  return (
+    typeof mutation === 'object' &&
+    mutation !== null &&
+    Object.prototype.hasOwnProperty.call(mutation, 'kind') &&
+    typeof (mutation as Record<string, unknown>).kind === 'string'
+  );
+}
+
+/**
  * Evaluates a role, status, or deletion mutation from already-authoritative
  * facts. `activeProtectedPeerCount` must count OTHER active protected users;
  * it is required only when this mutation would remove an active protected
@@ -148,15 +169,30 @@ export function evaluateAccountAdminMutation<
     mutation: input.mutation,
   };
 
+  // Validate the mutation discriminator's SHAPE before trusting it, then
+  // its VALUE exhaustively: a runtime value this package doesn't recognize
+  // — malformed, or simply an unknown kind — must never reach the allow
+  // path below, whether by throwing past the caller or by skipping every
+  // known-kind branch.
+  if (!hasOwnMutationKind(input.mutation)) {
+    return denied('UNKNOWN_MUTATION_KIND');
+  }
+
   let nextRole: Roles[number] | undefined;
   let nextStatus: Statuses[number] | undefined;
-  if (input.mutation.kind === 'set-role') {
-    if (!policy.roles.isKnown(input.mutation.role)) return denied('UNKNOWN_PROPOSED_ROLE');
-    nextRole = policy.roles.normalize(input.mutation.role);
-  }
-  if (input.mutation.kind === 'set-status') {
-    if (!policy.isKnownStatus(input.mutation.status)) return denied('UNKNOWN_PROPOSED_STATUS');
-    nextStatus = input.mutation.status;
+  switch (input.mutation.kind) {
+    case 'set-role':
+      if (!policy.roles.isKnown(input.mutation.role)) return denied('UNKNOWN_PROPOSED_ROLE');
+      nextRole = policy.roles.normalize(input.mutation.role);
+      break;
+    case 'set-status':
+      if (!policy.isKnownStatus(input.mutation.status)) return denied('UNKNOWN_PROPOSED_STATUS');
+      nextStatus = input.mutation.status;
+      break;
+    case 'delete':
+      break;
+    default:
+      return denied('UNKNOWN_MUTATION_KIND');
   }
 
   if (input.actorId === input.target.id) {

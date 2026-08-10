@@ -52,7 +52,7 @@ export interface AccountAdminPolicy<Roles extends readonly string[], Statuses ex
     }) => boolean;
     selfProtection: Required<NonNullable<DefineAccountAdminPolicyOptions<Roles, Statuses>['selfProtection']>>;
 }
-export type AccountAdminDenyReason = 'UNKNOWN_ACTOR_ROLE' | 'UNKNOWN_TARGET_ROLE' | 'UNKNOWN_TARGET_STATUS' | 'UNKNOWN_PROPOSED_ROLE' | 'UNKNOWN_PROPOSED_STATUS' | 'SELF_ROLE_REDUCTION' | 'SELF_DEACTIVATION' | 'SELF_DELETION' | 'TARGET_MANAGEMENT_FORBIDDEN' | 'ROLE_ASSIGNMENT_FORBIDDEN' | 'MISSING_ACTIVE_PROTECTED_PEER_COUNT' | 'LAST_ACTIVE_PROTECTED_ACCOUNT';
+export type AccountAdminDenyReason = 'UNKNOWN_ACTOR_ROLE' | 'UNKNOWN_TARGET_ROLE' | 'UNKNOWN_TARGET_STATUS' | 'UNKNOWN_MUTATION_KIND' | 'UNKNOWN_PROPOSED_ROLE' | 'UNKNOWN_PROPOSED_STATUS' | 'SELF_ROLE_REDUCTION' | 'SELF_DEACTIVATION' | 'SELF_DELETION' | 'TARGET_MANAGEMENT_FORBIDDEN' | 'ROLE_ASSIGNMENT_FORBIDDEN' | 'MISSING_ACTIVE_PROTECTED_PEER_COUNT' | 'LAST_ACTIVE_PROTECTED_ACCOUNT';
 export type AccountAdminDecision<Role extends string, Status extends string> = {
     allowed: true;
     outcome: 'allowed' | 'no-op';

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defineAccountAdminPolicy, evaluateAccountAdminMutation } from '../accountAdmin';
+import { defineAccountAdminPolicy, evaluateAccountAdminMutation, type AccountAdminMutation } from '../accountAdmin';
 import { defineRoles } from '../roles';
 
 // These are independent app-shaped policy configurations. They deliberately
@@ -147,5 +147,90 @@ describe('account-admin mutation policy: app-shaped compatibility fixtures', () 
       target: { id: 'target', role: 'user', status: 'active' },
       mutation: { kind: 'set-status', status: 'archived' },
     })).toEqual({ allowed: false, outcome: 'denied', reason: 'UNKNOWN_PROPOSED_STATUS' });
+  });
+});
+
+describe('account-admin mutation policy: unrecognized mutation kind (fail-closed)', () => {
+  it('an unrecognized mutation kind is denied with UNKNOWN_MUTATION_KIND and reports no effects at all', () => {
+    const decision = evaluateAccountAdminMutation(savoroPolicy, {
+      actorId: 'admin-1', actorRole: 'admin',
+      target: { id: 'member-1', role: 'member', status: 'active' },
+      // A runtime value this package doesn't recognize — e.g. a host bug or
+      // a stale client sending a mutation kind that predates a schema
+      // change. Must never fall through every known-kind branch to an allow.
+      mutation: { kind: 'ban' } as unknown as AccountAdminMutation,
+    });
+    expect(decision).toEqual({ allowed: false, outcome: 'denied', reason: 'UNKNOWN_MUTATION_KIND' });
+    // No `effects`/`invalidateCredentials` at all on a denial — asserted
+    // both structurally (toEqual above, which requires an exact key match)
+    // and explicitly here so the intent is unambiguous.
+    expect(decision).not.toHaveProperty('effects');
+  });
+
+  it('each of the three legitimate mutation kinds still behaves exactly as before', () => {
+    expect(evaluateAccountAdminMutation(savoroPolicy, {
+      actorId: 'owner-1', actorRole: 'owner',
+      target: { id: 'member-1', role: 'member', status: 'active' },
+      mutation: { kind: 'set-role', role: 'admin' },
+    })).toEqual({
+      allowed: true, outcome: 'allowed',
+      actorRole: 'owner', targetRole: 'member', targetStatus: 'active',
+      effects: { invalidateCredentials: true },
+    });
+
+    expect(evaluateAccountAdminMutation(savoroPolicy, {
+      actorId: 'owner-1', actorRole: 'owner',
+      target: { id: 'member-1', role: 'member', status: 'active' },
+      mutation: { kind: 'set-status', status: 'suspended' },
+    })).toEqual({
+      allowed: true, outcome: 'allowed',
+      actorRole: 'owner', targetRole: 'member', targetStatus: 'active',
+      effects: { invalidateCredentials: true },
+    });
+
+    expect(evaluateAccountAdminMutation(savoroPolicy, {
+      actorId: 'owner-1', actorRole: 'owner',
+      target: { id: 'member-1', role: 'member', status: 'active' },
+      mutation: { kind: 'delete' },
+    })).toEqual({
+      allowed: true, outcome: 'allowed',
+      actorRole: 'owner', targetRole: 'member', targetStatus: 'active',
+      effects: { invalidateCredentials: true },
+    });
+  });
+});
+
+describe('account-admin mutation policy: malformed mutation shapes never throw (fail-closed)', () => {
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+    ['a bare string', 'delete'],
+    ['a number', 42],
+  ])('a mutation that is %s denies with UNKNOWN_MUTATION_KIND, never throws', (_label, mutation) => {
+    const evaluate = () =>
+      evaluateAccountAdminMutation(savoroPolicy, {
+        actorId: 'admin-1', actorRole: 'admin',
+        target: { id: 'member-1', role: 'member', status: 'active' },
+        mutation: mutation as unknown as AccountAdminMutation,
+      });
+    // Accessing `.kind` on a null/undefined/primitive mutation without a
+    // shape guard would throw a TypeError, not return a decision — assert
+    // that explicitly, not just the final value.
+    expect(evaluate).not.toThrow();
+    expect(evaluate()).toEqual({ allowed: false, outcome: 'denied', reason: 'UNKNOWN_MUTATION_KIND' });
+  });
+
+  it('a mutation with `kind` INHERITED from a crafted prototype (no own `kind`) denies, never trusts the prototype chain', () => {
+    // Object.create({ kind: 'delete' }) has NO own `kind` property at all —
+    // ordinary property access (`mutation.kind`) still resolves 'delete'
+    // through the prototype chain, which is exactly the shape a validation
+    // pass keyed on `hasOwnProperty` must refuse to trust.
+    const mutation = Object.create({ kind: 'delete' }) as AccountAdminMutation;
+    const decision = evaluateAccountAdminMutation(savoroPolicy, {
+      actorId: 'admin-1', actorRole: 'admin',
+      target: { id: 'member-1', role: 'member', status: 'active' },
+      mutation,
+    });
+    expect(decision).toEqual({ allowed: false, outcome: 'denied', reason: 'UNKNOWN_MUTATION_KIND' });
   });
 });
