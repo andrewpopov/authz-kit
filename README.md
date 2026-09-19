@@ -5,6 +5,28 @@ normalization, a typed action policy with an `authorize()` decision, and
 two-tier scope-role inheritance. ORM- and framework-agnostic — **apps fetch
 roles, the kit decides.**
 
+## `authz-kit` vs `auth-kit`
+
+This package answers *what may you do?*. Its sibling,
+[`auth-kit`](https://github.com/andrewpopov/auth-kit), answers *who are you?*.
+Neither depends on the other, and most apps want both.
+
+|  | `auth-kit` | `authz-kit` |
+|---|---|---|
+| Answers | *Who are you?* | *What may you do?* |
+| Owns | Password hashing, single-use tokens, refresh-session rotation, OAuth/OIDC identity binding | Role ladders, typed action policy, scope inheritance, account-admin mutation decisions |
+| Shape | **Stateful** — protocols run against injected store/policy ports, with `/conformance` suites for real adapters | **Pure** — no store port, no cache, no I/O |
+
+The split is load-bearing, not cosmetic. `auth-kit` cannot do its job without
+storage seams — rotation and identity binding are stateful protocols. `authz-kit`'s
+entire security argument is that it has none, because its consumers deliberately
+re-read role rows from the database on every request; a store seam in that package
+would undercut the guarantee. Session rotation is also identical everywhere, while
+role vocabularies differ per app and per scope — one package is a shared algorithm,
+the other a shared shape over values the app already holds.
+
+A valid session is not a permission. Authenticate with one, decide with the other.
+
 ## The core principle: no store seam
 
 Several consumer apps deliberately re-read role rows from the database on
