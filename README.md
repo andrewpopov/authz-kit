@@ -462,6 +462,7 @@ security-sensitive route or migration.
 
 ```bash
 npm ci
+npm run hooks # once after cloning: enables the pre-push gate
 npm run verify
 ```
 
